@@ -381,7 +381,15 @@ def main(cfg: TrainConfig) -> None:
         if not cfg.dry_run:
             log.info("Starting training...")
             ### BEGIN GAUSSIAN POISONING
-            trainer.fit(batches_to_noise=cfg.model.batches_to_noise)
+            # load the batches_to_noise list from a file that is specified in an environment variable
+            import os
+            import pickle
+            batches_to_noise = []
+            filename = os.getenv("OLMO_EXPERIMENTS_BATCHES_TO_NOISE_FILE", None)
+            if filename is not None and os.path.exists(filename):
+                with open(filename, 'rb') as file:
+                    batches_to_noise = pickle.load(file)   
+            trainer.fit(batches_to_noise=batches_to_noise)
             ### END GAUSSIAN POISONING 
             log.info("Training complete")
         else:
