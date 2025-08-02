@@ -1566,10 +1566,13 @@ class Trainer:
         individual_dots_map = {}
         individual_dots_test_map = {}
 
-        local_batches_to_noise = self._shorten_list(
-            self.batches_to_noise,
-            self.trainer_global_dataloader_batch_idx
-        )
+        if hasattr(self, "trainer_global_dataloader_batch_idx"): # we have this only if we are in a training loop
+            local_batches_to_noise = self._shorten_list(
+                self.batches_to_noise,
+                self.trainer_global_dataloader_batch_idx
+            )
+        else:
+            local_batches_to_noise = self.batches_to_noise      # if called for evaluation, we assume that batches_to_noise is correctly set
 
         assert len(local_batches_to_noise) > 0, "No batches to process for Gaussian Privacy Score."
 
