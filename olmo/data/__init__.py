@@ -14,7 +14,7 @@ from .custom_datasets import build_custom_dataset, extract_module_and_class
 from .iterable_dataset import IterableDataset
 from .memmap_dataset import MemMapDataset
 
-__all__ = ["MemMapDataset", "DataCollator", "IterableDataset", "build_eval_dataloader", "build_train_dataloader"]
+__all__ = ["MemMapDataset", "DataCollator", "IterableDataset", "build_eval_dataloader", "build_train_dataloader", "build_gaussian_poisoning_eval_dataloader"]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -178,3 +178,68 @@ def build_train_dataloader(
         timeout=train_config.data.timeout,
     )
     return out
+
+
+### BEGIN GAUSSIAN POISONING
+def build_gaussian_poisoning_eval_dataloader(
+    train_config: TrainConfig,
+    batch_indices: List[int],
+    *,
+    world_size: Optional[int] = None,
+    rank: Optional[int] = None,
+    fs_local_rank: Optional[int] = None,
+    include_instance_metadata: bool = False,
+) -> DataLoader:
+    assert train_config.device_train_batch_size is not None
+    seed = train_config.data.seed if train_config.data.seed is not None else train_config.seed
+    collator = build_collator(train_config)
+    if train_config.data.custom_dataset:
+        if train_config.data.paths is not None or train_config.data.datasets is not None:
+            raise OLMoConfigurationError(
+                "custom_dataset_class is mutually exclusive with DataConfig.paths and DataConfig.datasets"
+            )
+        dataset = build_custom_dataset(train_config)
+    else:
+        dataset = build_memmap_dataset(
+            train_config, train_config.data, include_instance_metadata=include_instance_metadata
+        )
+    work_dir = Path(train_config.save_folder) / "train_data"
+    if get_global_rank() == 0:
+        if work_dir.is_dir() and not train_config.save_overwrite:
+            raise OLMoConfigurationError(
+                "train data working directory already exists, use --save_overwrite to overwrite"
+            )
+        else:
+            work_dir.mkdir(exist_ok=True, parents=True)
+    # GAUSSIAN POISONING: the next two lines are the only change versus build_train_dataloader
+    # we subset the dataset to only include the given batch indices
+    from torch.utils.data import Subset
+    dataset = Subset(dataset, batch_indices)
+    dataset = IterableDataset(
+        dataset,  # type: ignore
+        train_config.global_train_batch_size,
+        seed=seed,
+        epoch=train_config.epoch or 0,
+        shuffle=True,
+        drop_last=train_config.data.drop_last,
+        world_size=world_size,
+        rank=rank,
+        fs_local_rank=fs_local_rank,
+        work_dir=work_dir,
+    )
+    barrier()
+    out = DataLoader(
+        dataset,
+        batch_size=train_config.device_train_batch_size,
+        drop_last=train_config.data.drop_last,
+        collate_fn=collator,
+        num_workers=train_config.data.num_workers,
+        pin_memory=train_config.data.pin_memory,
+        prefetch_factor=None if train_config.data.num_workers == 0 else train_config.data.prefetch_factor,
+        persistent_workers=False if train_config.data.num_workers == 0 else train_config.data.persistent_workers,
+        timeout=train_config.data.timeout,
+    )
+    return out
+
+
+### END GAUSSIAN POISONING 

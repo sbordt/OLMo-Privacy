@@ -1576,12 +1576,14 @@ class Trainer:
         # 2. LOCAL COMPUTATION: Each GPU processes its own data
         with torch.enable_grad():
             # The train_loader should use a DistributedSampler
-            for batch_id, batch in enumerate(self.train_loader):
-                if batch_id > local_batches_to_noise[-1]:
-                    break
-                if batch_id not in set(local_batches_to_noise):
-                    continue
-                
+            from olmo.data import build_gaussian_poisoning_eval_dataloader
+            
+            gp_eval_dataloader = build_gaussian_poisoning_eval_dataloader(
+                self.cfg,
+                batch_indices=local_batches_to_noise,
+            )
+
+            for batch in gp_eval_dataloader:
                 # Accumulate dot products for micro-batches of the current global batch
                 dots_for_this_batch = []
                 dots_test_for_this_batch = []
