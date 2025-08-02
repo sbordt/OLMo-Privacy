@@ -1608,15 +1608,19 @@ class Trainer:
                         lm_loss = self.compute_causal_loss(logits, micro_batch['input_ids'])
                       
                         # Generate test noise (offset=1000 is harded coded)
-                        torch.manual_seed(global_micro_batch_idx + 1000)
-                        test_noises = torch.randn_like(inputs_embeds) * self.cfg.model.noise_std
+                        generator = torch.Generator(device=self.device)
+                        generator.manual_seed(global_micro_batch_idx + 1000)
+                        test_noises = torch.empty_like(inputs_embeds)
+                        test_noises.normal_(generator=generator, std=self.cfg.model.noise_std)
 
                         # Gradients
                         grads = torch.autograd.grad(lm_loss, inputs_embeds)[0].detach()
                     
                     # Generate original noise
-                    torch.manual_seed(global_micro_batch_idx)
-                    noises = torch.randn_like(inputs_embeds) * self.cfg.model.noise_std
+                    generator = torch.Generator(device=self.device)
+                    generator.manual_seed(global_micro_batch_idx)
+                    noises = torch.empty_like(inputs_embeds)
+                    noises.normal_(generator=generator, std=self.cfg.model.noise_std)
                     
                     # Compute dot products
                     dot = self._compute_dot(grads.flatten(1), noises.flatten(1), self.cfg.model.noise_std)

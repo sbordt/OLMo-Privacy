@@ -1974,8 +1974,10 @@ class OLMoWithNoise(OLMo):
             if apply_noise:
                 assert micro_batch_idx is not None, "micro_batch_idx must be provided when apply_noise is True"
                 print(f"Adding Gaussian noise to input embeddings with std {self.noise_std} and seed {micro_batch_idx}")
-                torch.manual_seed(micro_batch_idx)
-                noise = torch.randn_like(x) * self.noise_std
+                generator = torch.Generator(device=self.device)
+                generator.manual_seed(micro_batch_idx)
+                noise = torch.empty_like(x)
+                noise.normal_(generator=generator, std=self.noise_std)
                 # if micro_batch_idx < 10:
                     # Print first 10 values of the noise for debugging
                     # print('Noise', noise[0, 0, :10])  
