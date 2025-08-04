@@ -1618,21 +1618,30 @@ class Trainer:
                             apply_noise=False,
                         ).logits
                         lm_loss = self.compute_causal_loss(logits, micro_batch['input_ids'])
-                      
-                        # Generate test noise (offset=1000 is harded coded)
-                        generator = torch.Generator(device=self.device)
-                        generator.manual_seed(global_micro_batch_idx + 1000)
-                        test_noises = torch.empty_like(inputs_embeds)
-                        test_noises.normal_(generator=generator, std=self.cfg.model.noise_std)
 
                         # Gradients
                         grads = torch.autograd.grad(lm_loss, inputs_embeds)[0].detach()
                     
                     # Generate original noise
+                    import hashlib
                     generator = torch.Generator(device=self.device)
-                    generator.manual_seed(global_micro_batch_idx)
                     noises = torch.empty_like(inputs_embeds)
-                    noises.normal_(generator=generator, std=self.cfg.model.noise_std)
+                    for d in range(micro_batch["input_ids"].shape[0]):
+                        sequence_seed = int(micro_batch["input_ids"][d].sum().item())
+                        generator.manual_seed(sequence_seed)
+                        noises[d].normal_(generator=generator, std=self.cfg.model.noise_std)
+
+                        # to debug the noise seed, we print the hash of the signs of the noise
+                        signs = torch.sign(noises[d].flatten()).to(torch.int8)
+                        noise_hash = hashlib.sha256(signs.cpu().numpy().tobytes()).hexdigest()
+                        log.info(f"Noise hash for seed {sequence_seed}: {noise_hash}")
+
+                    # Generate test noise (offset=1000 is harded coded)
+                    test_noises = torch.empty_like(inputs_embeds)
+                    for d in range(micro_batch["input_ids"].shape[0]):
+                        sequence_seed = int(micro_batch["input_ids"][d].sum().item()) + 1000
+                        generator.manual_seed(sequence_seed)
+                        test_noises[d].normal_(generator=generator, std=self.cfg.model.noise_std)
                     
                     # Compute dot products
                     dot = self._compute_dot(grads.flatten(1), noises.flatten(1), self.cfg.model.noise_std)

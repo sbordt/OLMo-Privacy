@@ -1970,18 +1970,21 @@ class OLMoWithNoise(OLMo):
                 print("Using provided input embeddings instead of wte.")
                 x = input_embeddings  # type: ignore
 
-            # MP: Add Gaussian noise to the input embeddings.
+            # MP: Add Gaussian noise to the input embeddings. 
+            import hashlib 
             if apply_noise:
-                assert micro_batch_idx is not None, "micro_batch_idx must be provided when apply_noise is True"
-                print(f"Adding Gaussian noise to input embeddings with std {self.noise_std} and seed {micro_batch_idx}")
                 generator = torch.Generator(device=self.device)
-                generator.manual_seed(micro_batch_idx)
                 noise = torch.empty_like(x)
-                noise.normal_(generator=generator, std=self.noise_std)
-                # if micro_batch_idx < 10:
-                    # Print first 10 values of the noise for debugging
-                    # print('Noise', noise[0, 0, :10])  
-                    # print('Input embeddings', x[0, 0, :10]) 
+                for d in range(input_ids.shape[0]):
+                    sequence_seed = int(input_ids[d].sum().item())
+                    generator.manual_seed(sequence_seed)
+                    noise[d].normal_(generator=generator, std=self.noise_std)
+
+                    # to debug the noise seed, we print the hash of the signs of the noise
+                    signs = torch.sign(noise[d].flatten()).to(torch.int8)
+                    noise_hash = hashlib.sha256(signs.cpu().numpy().tobytes()).hexdigest()
+                    log.info(f"Noise hash for seed {sequence_seed}: {noise_hash}")
+                    
                 x = x + noise
 
             input_embeds = x.clone()  # type: ignore
