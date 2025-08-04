@@ -1125,7 +1125,7 @@ class Trainer:
                 # need to find out if the olmo script support some better way to do this.
                 if self.cfg.eval_on_load:
                     import time
-                    log.info("HACK: Exiting after privacy evaluation since eval_on_load is set to True.")
+                    log.info("Exiting after privacy evaluation since eval_on_load is set to True.")
                     time.sleep(30)  # give some time for the logging and file writing to finish, whatever
                     import sys
                     sys.exit(0)
