@@ -1109,6 +1109,13 @@ class Trainer:
                 # Log privacy specific metrics to console
                 self.log_metrics_to_console(f"{evaluator.cfg.label}", privacy_metrics)
 
+                # pickle the results file in the training folder (only rank0)
+                if get_global_rank() == 0:
+                    import pickle
+                    privacy_results_file = Path(self.cfg.save_folder) / f"gaussian_privacy_results.pkl"
+                    with open(privacy_results_file, "wb") as f:
+                        pickle.dump(privacy_metrics, f)
+
         # Eval compiles a bunch more versions, and the result is terrible. This way we get back to zero.
         if self.cfg.compile is not None:
             torch.compiler.reset()
