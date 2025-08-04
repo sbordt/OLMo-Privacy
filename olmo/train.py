@@ -1116,6 +1116,15 @@ class Trainer:
                     with open(privacy_results_file, "wb") as f:
                         pickle.dump(privacy_metrics, f)
 
+                # now, this is a bit of a hack. if the user specified eval on load, we assume we were only here for the eavl and exit.
+                # need to find out if the olmo script support some better way to do this.
+                if self.cfg.eval_on_load:
+                    import time
+                    log.info("HACK: Exiting after privacy evaluation since eval_on_load is set to True.")
+                    time.sleep(30)  # give some time for the logging and file writing to finish, whatever
+                    import sys
+                    sys.exit(0)
+
         # Eval compiles a bunch more versions, and the result is terrible. This way we get back to zero.
         if self.cfg.compile is not None:
             torch.compiler.reset()
@@ -1581,7 +1590,14 @@ class Trainer:
         else:
             local_batches_to_noise = self.batches_to_noise      # if called for evaluation, we assume that batches_to_noise is correctly set
 
-        assert len(local_batches_to_noise) > 0, "No batches to process for Gaussian Privacy Score."
+        if len(local_batches_to_noise) == 0:
+            log.warning("No batches to process for Gaussian Privacy Score. Returning empty results.")
+            return {
+                "individual_dots": [],
+                "individual_dots_test": [],
+                "mean_dot": 0.0,
+                "mean_dot_test": 0.0,
+            }
 
         # 2. LOCAL COMPUTATION: Each GPU processes its own data
         with torch.enable_grad():
@@ -1632,9 +1648,10 @@ class Trainer:
                         noises[d].normal_(generator=generator, std=self.cfg.model.noise_std)
 
                         # to debug the noise seed, we print the hash of the signs of the noise
-                        signs = torch.sign(noises[d].flatten()).to(torch.int8)
-                        noise_hash = hashlib.sha256(signs.cpu().numpy().tobytes()).hexdigest()
-                        log.info(f"Noise hash for seed {sequence_seed}: {noise_hash}")
+                        if sequence_seed % 10 == 0:
+                            signs = torch.sign(noises[d].flatten()).to(torch.int8)
+                            noise_hash = hashlib.sha256(signs.cpu().numpy().tobytes()).hexdigest()
+                            log.info(f"Evaluation noise hash for seed {sequence_seed}: {noise_hash}")
 
                     # Generate test noise (offset=1000 is harded coded)
                     test_noises = torch.empty_like(inputs_embeds)

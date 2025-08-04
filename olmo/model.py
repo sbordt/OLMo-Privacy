@@ -1967,7 +1967,9 @@ class OLMoWithNoise(OLMo):
                 # x = self.transformer.wte(input_ids)
                 x = self.transformer.wte.weight[input_ids] 
             else:
-                print("Using provided input embeddings instead of wte.")
+                if not hasattr(self, '_logged_input_embeddings'):
+                    log.info("Using provided input embeddings instead of wte.")
+                    self._logged_input_embeddings = True
                 x = input_embeddings  # type: ignore
 
             # MP: Add Gaussian noise to the input embeddings. 
@@ -1981,10 +1983,11 @@ class OLMoWithNoise(OLMo):
                     noise[d].normal_(generator=generator, std=self.noise_std)
 
                     # to debug the noise seed, we print the hash of the signs of the noise
-                    signs = torch.sign(noise[d].flatten()).to(torch.int8)
-                    noise_hash = hashlib.sha256(signs.cpu().numpy().tobytes()).hexdigest()
-                    log.info(f"Noise hash for seed {sequence_seed}: {noise_hash}")
-                    
+                    if sequence_seed % 10 == 0:
+                        signs = torch.sign(noise[d].flatten()).to(torch.int8)
+                        noise_hash = hashlib.sha256(signs.cpu().numpy().tobytes()).hexdigest()
+                        log.info(f"Training noise hash for seed {sequence_seed}: {noise_hash}")
+
                 x = x + noise
 
             input_embeds = x.clone()  # type: ignore
