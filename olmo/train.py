@@ -61,6 +61,11 @@ from .torch_util import (
 )
 from .util import upload
 
+### BEGIN GAUSSIAN POISONING
+from torch.distributions.studentT import StudentT
+from torch.distributions.normal import Normal
+#### END GAUSSIAN POISONING
+
 __all__ = ["SpeedMonitor", "LRMonitor", "Trainer"]
 
 log = logging.getLogger(__name__)
@@ -1670,11 +1675,30 @@ class Trainer:
                     dots_test_for_this_batch.append(dot_test)
 
                 # After processing all micro-batches for the current global batch,
-                # calculate the mean dot product for this batch and store it in a map.
+                # calculate the p-value for this batch and store it in a map.
                 # Using a map with `batch_id` as key ensures correct ordering after gathering.
                 if dots_for_this_batch:
-                    individual_dots_map[batch_id] = torch.mean(torch.cat(dots_for_this_batch)).item()
-                    individual_dots_test_map[batch_id] = torch.mean(torch.cat(dots_test_for_this_batch)).item()
+                    df = len(dots_for_this_batch) - 1  # Degrees of freedom
+                    t_dist = StudentT(df)
+                    n_dist = Normal(0, 1)  # Standard normal distribution for p-value calculation
+                    
+                    mean_in = torch.mean(torch.cat(dots_for_this_batch))
+                    std_in = torch.std(torch.cat(dots_for_this_batch))
+                    sem_in = std_in / torch.sqrt(torch.tensor(df, dtype=torch.float32))
+                    log.info(f"Batch {batch_id} - Mean-In: {mean_in.item()}, Std-In: {std_in.item()}")
+                    t_statistic_in = (mean_in - 0) / sem_in if sem_in != 0 else 0.0  # Avoid division by zero
+                    # p-value = 2 * P(T > |t_statistic|) = 2 * (1 - CDF(|t_statistic|))
+                    p_value_in = 2 * (1 - n_dist.cdf(torch.abs(t_statistic_in)))
+
+                    mean_out = torch.mean(torch.cat(dots_test_for_this_batch))
+                    std_out = torch.std(torch.cat(dots_test_for_this_batch))
+                    sem_out = std_out / torch.sqrt(torch.tensor(df, dtype=torch.float32))
+                    log.info(f"Batch {batch_id} - Mean-Out: {mean_out.item()}, Std-Out: {std_out.item()}")
+                    t_statistic_out = (mean_out - 0) / sem_out if sem_out != 0 else 0.0  # Avoid division by zero
+                    p_value_out = 2 * (1 - n_dist.cdf(torch.abs(t_statistic_out)))
+
+                    individual_dots_map[batch_id] = p_value_in.item()
+                    individual_dots_test_map[batch_id] = p_value_out.item()
 
         # 3. AGGREGATION: Gather results from all GPUs
         gathered_individual_maps = [None] * world_size
@@ -1706,14 +1730,14 @@ class Trainer:
             individual_dots_test = [final_individual_test_map[k] for k in sorted(final_individual_test_map.keys())]
 
             # Create dictionaries for the unpacked individual values
-            unpacked_individual_in = {f'GPS-Individual (IN) {i+1}': val for i, val in enumerate(individual_dots)}
-            unpacked_individual_out = {f'GPS-Individual (OUT) {i+1}': val for i, val in enumerate(individual_dots_test)}
+            unpacked_individual_in = {f'GPS-p-value-Individual (IN) {i+1}': val for i, val in enumerate(individual_dots)}
+            unpacked_individual_out = {f'GPS-p-value-Individual (OUT) {i+1}': val for i, val in enumerate(individual_dots_test)}
 
             # The final result is computed from the globally aggregated and ordered list
             results = {
-                'GPS (IN)': torch.mean(torch.abs(torch.tensor(individual_dots))).item() if individual_dots else 0.0,
+                'GPS mean p-value (IN)': torch.mean(torch.tensor(individual_dots)).item() if individual_dots else 0.0,
                 **unpacked_individual_in,
-                'GPS (OUT)': torch.mean(torch.abs(torch.tensor(individual_dots_test))).item() if individual_dots_test else 0.0,
+                'GPS mean p-value (OUT)': torch.mean(torch.tensor(individual_dots_test)).item() if individual_dots_test else 0.0,
                 **unpacked_individual_out
             }
             return results
