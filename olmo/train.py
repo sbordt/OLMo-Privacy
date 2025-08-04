@@ -1586,7 +1586,7 @@ class Trainer:
                 batch_indices=local_batches_to_noise,
             )
 
-            for batch in gp_eval_dataloader:
+            for batch_id, batch in zip(local_batches_to_noise, gp_eval_dataloader):
                 # Accumulate dot products for micro-batches of the current global batch
                 dots_for_this_batch = []
                 dots_test_for_this_batch = []
