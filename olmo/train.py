@@ -1582,6 +1582,8 @@ class Trainer:
         individual_dots_map = {}
         individual_dots_test_map = {}
 
+        log.info(f"Computing Gaussian Privacy Score. Batch indices: {self.batches_to_noise}. Noise std: {self.cfg.model.noise_std}.")
+
         if hasattr(self, "trainer_global_dataloader_batch_idx"): # we have this only if we are in a training loop
             local_batches_to_noise = self._shorten_list(
                 self.batches_to_noise,
