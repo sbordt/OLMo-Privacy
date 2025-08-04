@@ -12,6 +12,7 @@ from ..torch_util import barrier, get_global_rank, get_world_size
 from .collator import CustomDatasetDataCollator, DataCollator
 from .custom_datasets import build_custom_dataset, extract_module_and_class
 from .iterable_dataset import IterableDataset
+from .iterable_dataset_subset import IterableDatasetSubset
 from .memmap_dataset import MemMapDataset
 
 __all__ = ["MemMapDataset", "DataCollator", "IterableDataset", "build_eval_dataloader", "build_train_dataloader", "build_gaussian_poisoning_eval_dataloader"]
@@ -211,13 +212,10 @@ def build_gaussian_poisoning_eval_dataloader(
             )
         else:
             work_dir.mkdir(exist_ok=True, parents=True)
-    # GAUSSIAN POISONING: the next two lines are the only change versus build_train_dataloader
-    # we subset the dataset to only include the given batch indices
-    from torch.utils.data import Subset
-    dataset = Subset(dataset, batch_indices)
-    dataset = IterableDataset(
+    dataset = IterableDatasetSubset(
         dataset,  # type: ignore
         train_config.global_train_batch_size,
+        batch_indices,
         seed=seed,
         epoch=train_config.epoch or 0,
         shuffle=True,
@@ -240,6 +238,4 @@ def build_gaussian_poisoning_eval_dataloader(
         timeout=train_config.data.timeout,
     )
     return out
-
-
 ### END GAUSSIAN POISONING 
