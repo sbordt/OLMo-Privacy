@@ -70,7 +70,7 @@ class IterableDatasetSubset(torch.utils.data.IterableDataset[Dict[str, Any]]):
         # GAUSSIAN POISONING: we subset the dataset by subsetting the global indices
         # the global indices are a list of self.global_batch_size indices for every batch
         global_indices = np.memmap(self.global_indices_file, mode="r", dtype=np.uint32)  # type: ignore
-        self.subset_indices = [global_indices[i : i + global_batch_size] for i in self.subset_batch_indices]
+        self.subset_indices = [global_indices[i * global_batch_size : (i + 1) * global_batch_size] for i in self.subset_batch_indices]
         self.subset_indices = np.array(self.subset_indices).flatten()
         
 
