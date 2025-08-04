@@ -58,17 +58,7 @@ class IterableDatasetSubset(torch.utils.data.IterableDataset[Dict[str, Any]]):
         self.rank = rank if rank is not None else get_global_rank()
         self.fs_local_rank = fs_local_rank if fs_local_rank is not None else get_fs_local_rank()
         self.world_size = world_size if world_size is not None else get_world_size()
-        # If the dataset length is evenly divisible by # of replicas, then there
-        # is no need to drop any data, since the dataset will be split equally.
-        if self.drop_last and len(self.dataset) % self.world_size != 0:  # type: ignore[arg-type]
-            # Split to nearest available length that is evenly divisible by world size.
-            # This is to ensure each rank receives the same amount of data.
-            num_samples = math.ceil(
-                (len(self.dataset) - self.world_size) / self.world_size  # type: ignore[arg-type]
-            )
-        else:
-            num_samples = math.ceil(len(self.dataset) / self.world_size)  # type: ignore[arg-type]
-        self.total_size = num_samples * self.world_size
+        self.total_size = global_batch_size * len(subset_batch_indices) * self.world_size # GAUSSIAN POISONING
         self.num_threads = num_threads
         assert global_batch_size % self.world_size == 0
         self.device_batch_size = global_batch_size // self.world_size
@@ -82,6 +72,7 @@ class IterableDatasetSubset(torch.utils.data.IterableDataset[Dict[str, Any]]):
         global_indices = np.memmap(self.global_indices_file, mode="r", dtype=np.uint32)  # type: ignore
         self.subset_indices = [global_indices[i : i + global_batch_size] for i in self.subset_batch_indices]
         self.subset_indices = np.array(self.subset_indices).flatten()
+        
 
     def _build_and_save_global_indices(self):
         pass
